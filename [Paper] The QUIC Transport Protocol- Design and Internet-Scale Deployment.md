@@ -2,13 +2,27 @@
 
 Nov. 12, 2019
 
+QUIC is an encrypted transport: packets are authenticated and encrypted, preventing modification and limiting ossification of the protocol by middleboxes.
+
+# Introduction
+
 As the author said the QUIC protocol is **"an encrypted, multiplexed, and low-latency transport protocol designed from the ground up to improve transport performance for HTTPS traffic and to enable rapid deployment and continued evolution of transport mechanisms."**
+
+We present QUIC (Quick Udp Internet Connection), **a new transport designed from the ground up to improve performance for HTTPS traffic and to enable rapid deployment and continued evolution of transport mechanisms.** QUIC replaces most of the traditional HTTPS stack: HTTP/2, TLS, and TCP (Figure 1). We developed QUIC as a user-space transport with UDP as a substrate.
+
+![image-20191116184738944]([Paper] The QUIC Transport Protocol- Design and Internet-Scale Deployment.assets/image-20191116184738944.png)
+
+## Current deploy progress
 
 QUIC has been globally deployed at Google on thousands of servers and is used to serve traffic to a range of clients including a widely-used web browser (Chrome) and a popular mobile video streaming app (YouTube).
 
-QUIC is an encrypted transport: packets are authenticated and encrypted, preventing modification and limiting ossification of the protocol by middleboxes.
+**On the server-side**, our experience comes from deploying QUIC at Google’s front-end servers, which collectively handle billions of requests a day from web browsers and mobile apps across a wide range of services. 
 
-# Why QUIC (Quick Udp Internet Connection )
+**On the client side**, we have deployed QUIC in Chrome, in our mobile video streaming YouTube app, and in the Google Search app on Android. We find that on average, QUIC re- duces latency of Google Search responses by 8.0% for desktop users and by 3.6% for mobile users, and reduces rebuffer rates of YouTube playbacks by 18.0% for desktop users and 15.3% for mobile users. As shown in Figure 2, QUIC is widely deployed: it currently accounts for over 30% of Google’s total egress traffic in bytes and consequently an estimated 7% of global Internet traffic [61].
+
+![image-20191116191803962]([Paper] The QUIC Transport Protocol- Design and Internet-Scale Deployment.assets/image-20191116191803962.png)
+
+# Why QUIC
 
 ## Protocol Entrenchment
 
@@ -18,6 +32,10 @@ As a result, even modifying TCP remains challenging due to its ossification by m
 
 TCP is commonly implemented in the Operating System (OS) kernel. As a result, even if TCP modifications were deployable, pushing changes to TCP stacks typically requires OS upgrades. This coupling of the transport implementation to the OS limits deployment velocity of TCP changes; OS upgrades have system-wide impact and the upgrade pipelines and mechanisms are appropriately cautious [28].
 
+OS upgrades at servers tend to be faster by an order of magnitude but can still take many months because of appropriately rigorous stability and performance testing of the entire OS. 
+
+This limits the deployment and iteration velocity of even simple networking changes.
+
 ## Handshake Delay
 
 TCP connections commonly incur at least one round-trip delay of connection setup time before any application data can be sent, and TLS adds two round trips to this delay.
@@ -26,11 +44,11 @@ TCP connections commonly incur at least one round-trip delay of connection setup
 
 TCP’s bytestream abstraction, however, prevents applications from controlling the framing of their communications [12] and imposes a "latency tax" on application frames whose delivery must wait for retransmissions of previously lost TCP segments.
 
-# QUIC's Goal
+## QUIC's Goal
 
 QUIC is designed to meet several goals [59], including deployability, security, and reduction in handshake and head-of-line blocking delays.
 
-The QUIC protocol combines its cryptographic and trans- port handshakes to minimize setup RTTs. It multiplexes multiple requests/responses over a single connection by providing each with its own stream, so that no response can be blocked by another.
+The QUIC protocol combines its cryptographic and transport handshakes to minimize setup RTTs. It multiplexes multiple requests/responses over a single connection by providing each with its own stream, so that no response can be blocked by another.
 
 # Design and Implementation
 
@@ -43,6 +61,33 @@ The QUIC protocol combines its cryptographic and trans- port handshakes to minim
 - server hello (SHLO)
 
 An origin is identified by the set of URI scheme, hostname, and port number [5].
+
+### REJ Message from Server
+
+- server’s long-term Diffie-Hellman public value
+- a certificate chain authenticating the server
+- a signature of the server config using the private key from the leaf certificate of the chain
+- a source-address token: an authenticated-encryption block that contains the client’s publicly visible IP address (as seen at the server) and a timestamp by the server. **The client sends this token back to the server in later handshakes, demonstrating ownership of its IP address.** 
+
+### Complete CHLO
+
+- The client’s ephemeral Diffie-Hellman public value.
+
+### Version Negotiation
+
+A QUIC client proposes a version to use for the connection in the first packet of the connection and encodes the rest of the handshake using the proposed version. If the server does not speak the client-chosen version, it forces version negotiation by sending back a Version Negotiation packet to the client carrying all of the server’s supported versions, causing a round trip of delay before connection establishment.
+
+This mechanism eliminates round-trip latency when the client’s optimistically-chosen version is spoken by the server, and **incentivizes servers to not lag behind clients in deployment of newer versions.** 
+
+To prevent downgrade attacks, the initial version requested by the client and the list of versions supported by the server are both fed into the key-derivation function at both the client and the server while generating the final keys.
+
+## Stream Multiplexing
+
+![image-20191116202223207]([Paper] The QUIC Transport Protocol- Design and Internet-Scale Deployment.assets/image-20191116202223207.png)
+
+Applications commonly multiplex units of data within TCP’s single bytestream abstraction. To avoid head-of-line blocking due to TCP’s sequential delivery, QUIC supports multiple streams within a connection, ensuring that a lost UDP packet only impacts those streams whose data was carried in that packet.
+
+# Authentication and Encryption
 
 ### Cryptography
 
@@ -73,7 +118,7 @@ Note right of Bob: Bob now know\n g^(ab) mod p = A^b mod p\n as Symmetric Key
 
 $(g^a mod\ p)^b = (g^b mod\ p) ^ a = g^{ab} mod\ p$
 
-#### Prove of Diffie-Hellman
+##### Prove
 
 **Let:**
 
@@ -92,17 +137,6 @@ $\exists\ integer\ K\ let\ (g^a mod\ p)^b = (g^a+K p)^b mod\ p$
 $(g^a+K p)^b mod\ p = [g^{ab} + C_b^1g^{a-1}p K + C_b^2g^{a-2}(p K)^2 + ... + (p K)^a]\ mod\ p$
 
 $= g^{ab}mod\ p$
-
-### REJ Message from Server
-
-- server’s long-term Diffie-Hellman public value
-- a certificate chain authenticating the server
-- a signature of the server config using the private key from the leaf certificate of the chain
-- a source-address token: an authenticated-encryption block that contains the client’s publicly visible IP address (as seen at the server) and a timestamp by the server.
-
-### Version Negotiation
-
-A QUIC client proposes a version to use for the connection in the first packet of the connection and encodes the rest of the handshake using the proposed version. If the server does not speak the client-chosen version, it forces version negotiation by sending back a Version Negotiation packet to the client carrying all of the server’s supported versions, causing a round trip of delay before connection establishment.
 
 ## Loss Recovery
 
