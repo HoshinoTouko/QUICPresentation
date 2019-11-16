@@ -97,46 +97,46 @@ Applications commonly multiplex units of data within TCP’s single bytestream a
 
 Client (Bob)
 
-- $Private\ Key\ b$
+- $Private\ Key\ b$ 
 
 Server (Alice)
 
-- $A\ long\ term\ public\ value,\ large\ prime\ p$
-- $Private\ Key\ a$
-- $Signature\ by\ trusted\ third\ party\ if\ needed$
-- $Public\ prime\ base\ g$
+- $A\ long\ term\ public\ value,\ large\ prime\ p$ 
+- $Private\ Key\ a$ 
+- $Signature\ by\ trusted\ third\ party\ if\ needed$ 
+- $Public\ prime\ base\ g$ 
 
 **Goal: Symmetric Key** g^(ab) mod p
 
 ~~~sequence
 Alice->Bob: p, a, signature, g, A = g^a mode p
 Bob->Alice: b, B = g^b mod p
-Note left of Alice: Alice now know\n g^(ab) mod p = B^a mod p\n as Symmetric Key
-Note right of Bob: Bob now know\n g^(ab) mod p = A^b mod p\n as Symmetric Key
+Note right of Alice: Alice now know\n g^(ab) mod p = B^a mod p\n as Symmetric Key
+Note left of Bob: Bob now know\n g^(ab) mod p = A^b mod p\n as Symmetric Key
 
 ~~~
 
-$(g^a mod\ p)^b = (g^b mod\ p) ^ a = g^{ab} mod\ p$
+$(g^a mod\ p)^b = (g^b mod\ p) ^ a = g^{ab} mod\ p$ 
 
-##### Prove
+**Let:** 
 
-**Let:**
+$Prime\ p,\ g$ 
 
-$Prime\ p,\ g$
+$Private\ Key\ a,\ b$ 
 
-$Private\ Key\ a,\ b$
+**Proof:** 
 
-**Proof:**
+$(g^a mod\ p)^b = (g^b mod\ p)^a = g^{ab}mod\ p$ 
 
-$(g^a mod\ p)^b = (g^b mod\ p)^a = g^{ab}mod\ p$
+**Solution:** 
 
-**Solution:**
+$\exists\ integer\ K\ let\ (g^a mod\ p)^b = (g^a+K p)^b$ 
 
-$\exists\ integer\ K\ let\ (g^a mod\ p)^b = (g^a+K p)^b mod\ p$
+$\rightarrow  (g^a+K p)^b = [g^{ab} + C_b^1g^{a-1}p K + C_b^2g^{a-2}(p K)^2 + ... + (p K)^a]$ 
 
-$(g^a+K p)^b mod\ p = [g^{ab} + C_b^1g^{a-1}p K + C_b^2g^{a-2}(p K)^2 + ... + (p K)^a]\ mod\ p$
+$\rightarrow (g^a+K p)^b = g^{ab}mod\ p$ 
 
-$= g^{ab}mod\ p$
+$\rightarrow (g^a mod\ p)^b = g^{ab}mod\ p$ 
 
 ## Loss Recovery
 
