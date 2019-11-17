@@ -87,6 +87,12 @@ To prevent downgrade attacks, the initial version requested by the client and th
 
 Applications commonly multiplex units of data within TCP’s single bytestream abstraction. To avoid head-of-line blocking due to TCP’s sequential delivery, QUIC supports multiple streams within a connection, ensuring that a lost UDP packet only impacts those streams whose data was carried in that packet.
 
+
+
+**Relations between Stream ID, Offset and Packet Number.**
+
+For each stream contains a **Stream ID** and frames. If a packet including frames lost, the sender will retransmit this packet with a increased **Packet ID** but let frame's **Stream ID and Offset** unchanged. **(Increased packet id and still stream offset when retransmitting contributed to accurate RTT estimation)**
+
 # Authentication and Encryption
 
 ### Cryptography
@@ -138,15 +144,23 @@ $\rightarrow (g^a+K p)^b = g^{ab}mod\ p$
 
 $\rightarrow (g^a mod\ p)^b = g^{ab}mod\ p$ 
 
+
+
+With the exception of a few early handshake packets and reset packets, QUIC packets are fully authenticated and mostly encrypted.
+
+Upon sending an SHLO message, the server immediately switches to sending packets encrypted with the forward-secure keys. Upon receiving the SHLO message, the client switches to sending packets encrypted with the forward-secure keys.
+
 ## Loss Recovery
 
 Each QUIC packet carries a new packet number, including those carrying retransmitted data.
 
 This design obviates the need for a separate mechanism to distinguish the ACK of a retransmission from that of an original transmission, thus avoiding TCP’s retransmission ambiguity problem. Stream offsets in stream frames are used for delivery ordering, separating the two functions that TCP conflates. The packet number represents an explicit time-ordering, which enables simpler and more accurate loss detection than in TCP.
 
-**Relations between Stream ID, Offset and Packet Number.**
+Stream offsets in stream frames are used for delivery ordering, separating the two functions that TCP conflates. The packet number represents an explicit time-ordering, which enables simpler and more accurate loss detection than in TCP.
 
-For each stream contains a **Stream ID** and frames. If a packet including frames lost, the sender will retransmit this packet with a increased **Packet ID** but let frame's **Stream ID and Offset** unchanged. **(Increased packet id and still stream offset when retransmitting contributed to accurate RTT estimation)**
+
+
+QUIC’s acknowledgments support up to 256 ACK blocks, making QUIC more resilient to reordering and loss than TCP with SACK [46].
 
 ## Flow Control
 
@@ -158,11 +172,59 @@ The QUIC protocol does not rely on a specific congestion control algorithm and o
 
 ## NAT Rebinding and Connection Migration
 
-While QUIC endpoints simply elide the problem of NAT rebinding by using the Connection ID to identify connections, client-initiated connection migration is a work in progress with limited deployment at this point.##
+QUIC connections are identified by a 64-bit Connection ID.
+
+QUIC’s Connection ID enables connections to survive changes to the client’s IP and port. Such changes can be caused by NAT timeout and rebinding (which tend to be more aggressive for UDP than for TCP [27]) or by the client changing network connectivity to a new IP address.
+
+While QUIC endpoints simply elide the problem of NAT rebinding by using the Connection ID to identify connections, client-initiated connection migration is a work in progress with limited deployment at this point.
 
 ## QUIC Discovery for HTTPS
 
+A client does not know a priori whether a given server speaks QUIC. When our client makes an HTTP request to an origin for the first time, it sends the request over TLS/TCP. Our servers advertise QUIC support by including an "Alt-Svc" header in their HTTP responses [48]. This header tells a client that connections to the origin may be attempted using QUIC. The client can now attempt to use QUIC in subsequent requests to the same origin.
+
 On a subsequent HTTP request to the same origin, the client races a QUIC and a TLS/TCP connection, but prefers the QUIC connection by delaying connecting via TLS/TCP by up to 300 ms. Whichever protocol successfully establishes a connection first ends up getting used for that request. If QUIC is blocked on the path, or if the QUIC handshake packet is larger than the path’s MTU, then the QUIC handshake fails, and the client uses the fallback TLS/TCP connection.
+
+# Experiment Framework
+
+Our development of the QUIC protocol relies heavily on continual Internet-scale experimentation to examine the value of various features and to tune parameters. In this section we describe the experimentation frameworks in Chrome and our server fleet, which allow us to experiment safely with QUIC. We drove QUIC experimentation by implementing it in Chrome,
+which has a strong experimentation and analysis framework that allows new features to be A/B tested and evaluated before full launch. Chrome’s experimentation framework pseudo-randomly assigns clients to experiments and exports a wide range of metrics, from HTTP error rates to transport handshake latency. Clients that are opted into statistics gathering report their statistics along with a list of their assigned experiments, which subsequently enables us to slice metrics by experiment. This framework also allows us to rapidly disable any experiment, thus protecting users from problematic experiments.
+
+# QUIC Performance
+
+## Performance By Region
+
+Differences in access-network quality and distance from Google servers result in RTT and retransmission rate variations for different geographical regions. We now look at QUIC’s impact on Search Latency10 and on Video Rebuffer Rate in select countries, chosen to span a wide range of network conditions. Table 3 show how QUIC’s performance impact varies by country.
+In South Korea, which has the lowest average RTT and the lowest network loss, QUICg’s performance is closer to that of TCPg. Network conditions in the United States are more typical of the global average, and QUICg shows greater improvements in the USA than in South Korea. India, which has the highest average RTT and retransmission rate, shows the highest benefits across the board. QUIC’s performance benefits over TLS/TCP are thus not uniformly distributed across geography or network quality: benefits are greater in networks and regions that have higher average RTT and higher network loss.
+
+##      Server CPU Utilization
+
+The QUIC implementation was initially written with a focus on rapid feature development and ease of debugging, not CPU efficiency. When we started measuring the cost of serving YouTube traffic over QUIC, we found that QUIC’s server CPU-utilization was about **3.5 times higher** than TLS/TCP.
+
+The three major sources of QUIC’s CPU cost were: **cryptography, sending and receiving of UDP packets, and maintaining internal QUIC state.**
+
+
+
+To reduce cryptographic costs, we employed a hand-optimized version of the **ChaCha20 cipher favored by mobile clients.** 
+
+To reduce packet receive costs, we used asynchronous packet reception from the kernel via a memory-mapped application ring buffer (Linux’s PACKET_RX_RING). 
+
+Finally, to reduce the cost of maintaining state, we rewrote critical paths and data-structures to be **more cache-efficient.**
+
+
+
+With these optimizations, we decreased the CPU cost of serving web traffic over QUIC to **approximately twice that of TLS/TCP**, which has allowed us to increase the levels of QUIC traffic we serve.
+
+## Performance Limitations
+
+**Pre-warmed connections:** When applications hide handshake latency by performing handshakes proactively, these applications receive no measurable benefit from QUIC’s 0-RTT handshake.
+
+**High bandwidth, low-delay, low-loss networks:** The use of QUIC on networks with plentiful bandwidth, low delay, and low loss rate, shows little gain and occasionally negative performance impact. When used over a very high-bandwidth (over 100 Mbps) and/or very low RTT connection (a few milliseconds), QUIC may perform worse than TCP. 
+
+**Mobile devices:** QUIC’s gains for mobile users are generally more modest than gains for desktop users.
+
+# Experiences
+
+
 
 # References
 
