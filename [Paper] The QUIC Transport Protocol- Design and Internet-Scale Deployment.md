@@ -122,8 +122,6 @@ Note left of Bob: Bob now know\n g^(ab) mod p = A^b mod p\n as Symmetric Key
 
 ~~~
 
-$(g^a mod\ p)^b = (g^b mod\ p) ^ a = g^{ab} mod\ p$ 
-
 **Let:** 
 
 $Prime\ p,\ g$ 
@@ -132,7 +130,7 @@ $Private\ Key\ a,\ b$
 
 **Proof:** 
 
-$(g^a mod\ p)^b = (g^b mod\ p)^a = g^{ab}mod\ p$ 
+$(g^a mod\ p)^b mod\ p = (g^b mod\ p)^a mod\ p = g^{ab}mod\ p$ 
 
 **Solution:** 
 
